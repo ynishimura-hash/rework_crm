@@ -1,0 +1,39 @@
+{
+  "name": "EIS 顧客管理",
+  "short_name": "顧客管理",
+  "description": "EIS顧客管理・CRMシステム",
+  "start_url": "/contacts",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/crm-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/crm-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "企業一覧",
+      "short_name": "企業",
+      "url": "/companies",
+      "icons": [{ "src": "/icons/crm-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "担当者一覧",
+      "short_name": "担当者",
+      "url": "/contacts",
+      "icons": [{ "src": "/icons/crm-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
