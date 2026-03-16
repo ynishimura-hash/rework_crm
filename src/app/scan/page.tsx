@@ -1,10 +1,20 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Camera, FileText, Upload, ArrowLeft, Users, Building2, Check, Loader2, X, ClipboardPaste, Plus, Trash2, Edit3, FolderOpen } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Camera, FileText, Upload, ArrowLeft, Users, Building2, Check, Loader2, X, ClipboardPaste, Plus, Trash2, Edit3, FolderOpen, Image as ImageIcon, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
-type InputMode = "camera" | "text" | null;
+type InputMode = "camera" | "text" | "drive" | null;
+
+interface DriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  thumbnailLink?: string;
+  createdTime?: string;
+  size?: string;
+}
 
 interface ExtractedData {
   company?: {
@@ -35,6 +45,85 @@ export default function ScanPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [saveStatuses, setSaveStatuses] = useState<Record<number, "idle" | "saving" | "saved" | "error">>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drive関連
+  const searchParams = useSearchParams();
+  const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
+  const [selectedDriveFiles, setSelectedDriveFiles] = useState<Set<string>>(new Set());
+  const [isDriveLoading, setIsDriveLoading] = useState(false);
+  const [driveNeedsAuth, setDriveNeedsAuth] = useState(false);
+
+  // URLパラメータでdriveモードに自動切替
+  useEffect(() => {
+    if (searchParams.get("mode") === "drive") {
+      setMode("drive");
+      loadDriveFiles();
+    }
+  }, [searchParams]);
+
+  const loadDriveFiles = async () => {
+    setIsDriveLoading(true);
+    setDriveNeedsAuth(false);
+    try {
+      const res = await fetch("/api/google-drive/files");
+      const data = await res.json();
+      if (data.needsAuth) {
+        setDriveNeedsAuth(true);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error);
+      setDriveFiles(data.files || []);
+    } catch (err) {
+      console.error("Drive files error:", err);
+    } finally {
+      setIsDriveLoading(false);
+    }
+  };
+
+  const toggleDriveFile = (fileId: string) => {
+    setSelectedDriveFiles(prev => {
+      const next = new Set(prev);
+      if (next.has(fileId)) next.delete(fileId);
+      else next.add(fileId);
+      return next;
+    });
+  };
+
+  const handleDriveExtract = async () => {
+    if (selectedDriveFiles.size === 0) return;
+    setIsProcessing(true);
+    try {
+      // 選択ファイルをダウンロードしてbase64に変換
+      const images: string[] = [];
+      for (const fileId of selectedDriveFiles) {
+        const res = await fetch(`/api/google-drive/download?fileId=${fileId}`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data.dataUri) images.push(data.dataUri);
+      }
+
+      if (images.length === 0) {
+        alert("画像のダウンロードに失敗しました");
+        return;
+      }
+
+      // 抽出API呼び出し
+      const extractRes = await fetch("/api/scan/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(images.length === 1 ? { image: images[0] } : { images }),
+      });
+
+      if (!extractRes.ok) throw new Error("抽出に失敗しました");
+      const result = await extractRes.json();
+      setExtractedResults(result.results || [result]);
+    } catch (err) {
+      console.error("Drive extract error:", err);
+      alert("情報の抽出に失敗しました。もう一度お試しください。");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -155,6 +244,7 @@ export default function ScanPage() {
     setSaveStatuses({});
     setEditingIndex(null);
     setIsProcessing(false);
+    setSelectedDriveFiles(new Set());
   };
 
   const allSaved = extractedResults.length > 0 && extractedResults.every((_, i) => saveStatuses[i] === "saved");
@@ -228,7 +318,7 @@ export default function ScanPage() {
           </div>
         )}
         <h1 className="text-lg font-bold text-amber-900">
-          {mode === "camera" ? "名刺・スクショを読み取り" : mode === "text" ? "テキストから登録" : "顧客情報を登録"}
+          {mode === "camera" ? "名刺・スクショを読み取り" : mode === "text" ? "テキストから登録" : mode === "drive" ? "Google Drive から読み取り" : "顧客情報を登録"}
         </h1>
       </header>
 
@@ -265,17 +355,20 @@ export default function ScanPage() {
               </div>
             </button>
 
-            {/* 一括インポートリンク（将来のPhase3） */}
+            {/* Google Drive一括インポート */}
             <div className="pt-4 border-t border-amber-200">
-              <div className="w-full bg-slate-50 rounded-2xl border-2 border-slate-200 p-6 flex items-center gap-4 opacity-60 cursor-not-allowed">
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center shrink-0">
-                  <FolderOpen className="w-7 h-7 text-slate-400" />
+              <button
+                onClick={() => { setMode("drive"); loadDriveFiles(); }}
+                className="w-full bg-white rounded-2xl border-2 border-emerald-200 p-6 flex items-center gap-4 hover:border-emerald-400 hover:shadow-md transition-all active:scale-[0.98]"
+              >
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-100 to-green-100 flex items-center justify-center shrink-0">
+                  <FolderOpen className="w-7 h-7 text-emerald-600" />
                 </div>
                 <div className="text-left">
-                  <h3 className="font-bold text-slate-500">Google Drive から一括インポート</h3>
-                  <p className="text-sm text-slate-400 mt-0.5">近日公開予定</p>
+                  <h3 className="font-bold text-slate-900">Google Drive から一括インポート</h3>
+                  <p className="text-sm text-slate-500 mt-0.5">Driveの名刺画像をまとめて読み取り</p>
                 </div>
-              </div>
+              </button>
             </div>
           </div>
         )}
@@ -428,6 +521,108 @@ export default function ScanPage() {
                 </>
               )}
             </button>
+          </div>
+        )}
+
+        {mode === "drive" && (
+          <div className="space-y-4 pt-4">
+            {/* 認証が必要な場合 */}
+            {driveNeedsAuth && (
+              <div className="text-center space-y-4 py-8">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+                  <FolderOpen className="w-8 h-8 text-emerald-600" />
+                </div>
+                <p className="text-sm text-slate-600">Google Driveに接続して名刺画像を読み込みます</p>
+                <a
+                  href="/api/google-drive/auth"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors"
+                >
+                  <FolderOpen className="w-5 h-5" />
+                  Google Drive に接続
+                </a>
+              </div>
+            )}
+
+            {/* ローディング */}
+            {isDriveLoading && (
+              <div className="flex items-center justify-center py-12 gap-3">
+                <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                <span className="text-sm text-slate-600">Driveからファイルを取得中...</span>
+              </div>
+            )}
+
+            {/* ファイル一覧 */}
+            {!isDriveLoading && !driveNeedsAuth && (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-600">
+                    {driveFiles.length === 0 ? "画像ファイルが見つかりません" : `${driveFiles.length}件の画像`}
+                  </p>
+                  <button
+                    onClick={loadDriveFiles}
+                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {driveFiles.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {driveFiles.filter(f => f.mimeType.startsWith("image/")).map(file => {
+                      const isSelected = selectedDriveFiles.has(file.id);
+                      return (
+                        <button
+                          key={file.id}
+                          onClick={() => toggleDriveFile(file.id)}
+                          className={`relative rounded-xl overflow-hidden border-2 aspect-square transition-all ${
+                            isSelected ? "border-emerald-500 ring-2 ring-emerald-500/30" : "border-slate-200 hover:border-slate-300"
+                          }`}
+                        >
+                          {file.thumbnailLink ? (
+                            <img src={file.thumbnailLink} alt={file.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+                              <ImageIcon className="w-8 h-8 text-slate-300" />
+                            </div>
+                          )}
+                          {isSelected && (
+                            <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
+                              <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
+                                <Check className="w-5 h-5 text-white" />
+                              </div>
+                            </div>
+                          )}
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1.5 py-0.5">
+                            <p className="text-[10px] text-white truncate">{file.name}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 読み取りボタン */}
+                {selectedDriveFiles.size > 0 && (
+                  <button
+                    onClick={handleDriveExtract}
+                    disabled={isProcessing}
+                    className="w-full py-3.5 bg-emerald-600 text-white rounded-xl font-semibold text-base hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        AIが読み取り＆HP情報補完中... ({selectedDriveFiles.size}枚)
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-5 h-5" />
+                        選択した{selectedDriveFiles.size}枚をAIで読み取る
+                      </>
+                    )}
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

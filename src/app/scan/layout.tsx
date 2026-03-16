@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 
 // 名刺スキャン専用レイアウト（独立PWA）
 // CRMのサイドバーなし、スキャン専用のフルスクリーンUI
@@ -26,5 +27,5 @@ export default function ScanLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return <Suspense>{children}</Suspense>;
 }
