@@ -373,7 +373,7 @@ export default function ScanPage() {
                 {isProcessing ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    AIが読み取り中... ({imagePreviews.length}枚)
+                    AIが読み取り＆HP情報補完中... ({imagePreviews.length}枚)
                   </>
                 ) : (
                   <>
@@ -419,7 +419,7 @@ export default function ScanPage() {
               {isProcessing ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  AIが解析中...
+                  AIが解析＆HP情報補完中...
                 </>
               ) : (
                 <>

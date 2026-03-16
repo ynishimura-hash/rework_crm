@@ -235,6 +235,100 @@ ${existingContacts.map((c, i) => `${i + 1}. [ID:${c.id}] ${c.name} (${c.company_
   }
 }
 
+/**
+ * 企業HPから不足情報を自動補完
+ * hp_urlが存在し、industry/addressが不足している場合にWebサイトを解析
+ */
+export async function enrichFromWebsite(data: ExtractedInfo): Promise<ExtractedInfo> {
+  const url = data.company?.hp_url;
+  if (!url || !GEMINI_API_KEY) return data;
+
+  // 補完が必要な項目があるかチェック
+  const needsIndustry = !data.company?.industry;
+  const needsAddress = !data.company?.address;
+  if (!needsIndustry && !needsAddress) return data;
+
+  try {
+    // WebサイトのHTMLを取得（タイムアウト5秒）
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ReworkCRM/1.0)' },
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return data;
+
+    const html = await res.text();
+    // HTMLからテキストのみ抽出（タグ除去、最大3000文字に制限）
+    const textContent = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 3000);
+
+    if (textContent.length < 50) return data;
+
+    const missingFields: string[] = [];
+    if (needsIndustry) missingFields.push('industry（業種）');
+    if (needsAddress) missingFields.push('address（住所・所在地）');
+
+    const prompt = `以下は「${data.company?.name || '不明'}」という企業のWebサイトのテキストです。
+以下の不足情報を抽出してJSON形式で返してください。
+
+### 抽出したい情報:
+${missingFields.map(f => `- ${f}`).join('\n')}
+
+### Webサイトテキスト:
+${textContent}
+
+### 出力JSON形式（見つからない場合はnull）:
+\`\`\`json
+{
+  ${needsIndustry ? '"industry": "業種",' : ''}
+  ${needsAddress ? '"address": "住所",' : ''}
+}
+\`\`\`
+余分な説明は不要です。JSONのみ返してください。`;
+
+    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 256,
+          responseMimeType: 'application/json',
+        },
+      }),
+    });
+
+    if (!response.ok) return data;
+
+    const result = await response.json();
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) return data;
+
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || [null, text];
+    const enriched = JSON.parse(jsonMatch[1] || text);
+
+    // 不足フィールドのみ補完（既存データは上書きしない）
+    const updatedCompany = { ...data.company };
+    if (needsIndustry && enriched.industry) updatedCompany.industry = enriched.industry;
+    if (needsAddress && enriched.address) updatedCompany.address = enriched.address;
+
+    return { ...data, company: updatedCompany };
+  } catch (error) {
+    // リサーチ失敗は無視（元データをそのまま返す）
+    console.error('HP enrichment failed:', error);
+    return data;
+  }
+}
+
 function simpleDuplicateCheck(
   newData: ExtractedInfo,
   existingCompanies: Array<{ id: string; name: string }>,

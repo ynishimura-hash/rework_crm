@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { extractFromImage, extractFromImages, extractFromText } from '@/lib/gemini';
+import { extractFromImage, extractFromImages, extractFromText, enrichFromWebsite } from '@/lib/gemini';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { image, images, text } = body;
+    const { image, images, text, skipEnrich } = body;
 
     if (!image && !images && !text) {
       return NextResponse.json(
@@ -16,15 +16,25 @@ export async function POST(request: NextRequest) {
     // 複数画像の場合
     if (images && Array.isArray(images) && images.length > 0) {
       const results = await extractFromImages(images);
+      // 各結果に対してHP自動リサーチ
+      if (!skipEnrich) {
+        const enriched = await Promise.all(results.map(r => enrichFromWebsite(r)));
+        return NextResponse.json({ results: enriched });
+      }
       return NextResponse.json({ results });
     }
 
-    // 単一画像の場合
+    // 単一画像またはテキスト
     let result;
     if (image) {
       result = await extractFromImage(image);
     } else {
       result = await extractFromText(text);
+    }
+
+    // HP自動リサーチで不足情報を補完
+    if (!skipEnrich) {
+      result = await enrichFromWebsite(result);
     }
 
     return NextResponse.json(result);
