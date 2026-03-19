@@ -16,9 +16,10 @@ export async function GET(request: Request) {
 
     const clientId = process.env.GOOGLE_CLIENT_ID
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${appUrl}/api/google-calendar/callback`
 
-    if (!clientId || !clientSecret || !redirectUri) {
+    if (!clientId || !clientSecret) {
         return NextResponse.json({ error: "Google Calendar連携が未設定です" }, { status: 500 })
     }
 

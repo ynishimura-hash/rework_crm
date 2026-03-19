@@ -27,6 +27,8 @@ export async function GET() {
     authUrl.searchParams.set("scope", scopes)
     authUrl.searchParams.set("access_type", "offline")
     authUrl.searchParams.set("prompt", "consent")
+    // s.sawada@rework.jp.net のアカウントを事前選択
+    authUrl.searchParams.set("login_hint", "s.sawada@rework.jp.net")
 
     return NextResponse.redirect(authUrl.toString())
 }
