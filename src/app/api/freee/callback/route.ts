@@ -14,7 +14,8 @@ export async function GET(request: Request) {
 
     const clientId = process.env.FREEE_CLIENT_ID;
     const clientSecret = process.env.FREEE_CLIENT_SECRET;
-    const redirectUri = process.env.FREEE_REDIRECT_URI;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002";
+    const redirectUri = process.env.FREEE_REDIRECT_URI || `${appUrl}/api/freee/callback`;
 
     try {
         // 認可コードを使ってアクセストークンを取得

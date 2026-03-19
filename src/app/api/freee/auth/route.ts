@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
     const clientId = process.env.FREEE_CLIENT_ID;
-    const redirectUri = process.env.FREEE_REDIRECT_URI;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002";
+    // FREEE_REDIRECT_URI があればそれを使い、なければ NEXT_PUBLIC_APP_URL から自動生成
+    const redirectUri = process.env.FREEE_REDIRECT_URI || `${appUrl}/api/freee/callback`;
 
-    if (!clientId || !redirectUri) {
-        return NextResponse.json({ error: 'Missing Freee credentials' }, { status: 500 });
+    if (!clientId) {
+        return NextResponse.json({ error: 'FREEE_CLIENT_IDが未設定です' }, { status: 500 });
     }
 
     // freeeの認証URLを構築
