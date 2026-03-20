@@ -15,6 +15,7 @@ import {
     Link as LinkIcon,
     CreditCard,
     ClipboardList,
+    ShieldCheck,
     LogOut
 } from "lucide-react"
 
@@ -31,6 +32,7 @@ const navigation = [
     { name: '予約リンク', href: '/event-types', icon: LinkIcon },
     { name: 'メッセージ', href: '/communications', icon: MessageSquare },
     { name: '提供サービス', href: '/services', icon: Layers },
+    { name: '安全パトロール', href: '/safety', icon: ShieldCheck },
     { name: 'レポート・売上', href: '/reports', icon: BarChart3 },
     { name: 'freee連携', href: '/api/freee/auth', icon: LinkIcon },
     { name: '入金記録', href: '/freee/payments', icon: CreditCard },
