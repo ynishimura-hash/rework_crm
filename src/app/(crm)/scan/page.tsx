@@ -261,6 +261,15 @@ export default function ScanPage() {
           contactAction: result.contact?.action,
         },
       }));
+
+      // HP情報を非同期で取得（fire-and-forget、レスポンスを待たない）
+      if (result.company?.id) {
+        fetch("/api/scan/enrich", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ companyId: result.company.id }),
+        }).catch(() => {}); // エラーは無視（通知で結果を伝える）
+      }
     } catch (err) {
       console.error("Save error:", err);
       setSaveStatuses(prev => ({ ...prev, [index]: "error" }));
