@@ -150,8 +150,8 @@ export default function CompaniesPage() {
 
             {/* テーブル表示 */}
             {viewMode === 'table' ? (
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="overflow-x-auto">
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-visible">
+                    <div className="overflow-x-auto overflow-y-visible">
                         <table className="min-w-full divide-y divide-slate-200">
                             <thead className="bg-slate-50/50">
                                 <tr>
