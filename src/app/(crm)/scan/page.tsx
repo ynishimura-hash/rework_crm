@@ -574,7 +574,7 @@ export default function ScanPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <button
                   onClick={() => {
                     if (fileInputRef.current) {
@@ -582,14 +582,14 @@ export default function ScanPage() {
                       fileInputRef.current.click();
                     }
                   }}
-                  className="w-full aspect-[4/3] bg-white rounded-2xl border-2 border-dashed border-amber-300 flex flex-col items-center justify-center gap-3 hover:border-amber-500 hover:bg-amber-50/50 transition-all active:scale-[0.98]"
+                  className="bg-white rounded-xl border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-3 hover:border-blue-300 hover:bg-blue-50/30 transition-all"
                 >
-                  <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
-                    <Camera className="w-8 h-8 text-amber-600" />
+                  <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+                    <Camera className="w-6 h-6 text-blue-600" />
                   </div>
                   <div className="text-center">
-                    <p className="font-semibold text-amber-800">タップして撮影</p>
-                    <p className="text-xs text-amber-600 mt-1">名刺を1〜4枚並べて1枚の写真に収めてください</p>
+                    <p className="font-semibold text-slate-800 text-sm">カメラで撮影</p>
+                    <p className="text-xs text-slate-500 mt-1">名刺を1〜4枚並べて撮影</p>
                   </div>
                 </button>
 
@@ -600,10 +600,15 @@ export default function ScanPage() {
                       fileInputRef.current.click();
                     }
                   }}
-                  className="w-full py-3.5 bg-white rounded-xl border border-amber-200 text-amber-700 font-medium flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors active:scale-[0.98]"
+                  className="bg-white rounded-xl border-2 border-dashed border-slate-200 p-8 flex flex-col items-center justify-center gap-3 hover:border-blue-300 hover:bg-blue-50/30 transition-all"
                 >
-                  <Upload className="w-4 h-4" />
-                  ライブラリから選択
+                  <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center">
+                    <Upload className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-semibold text-slate-800 text-sm">ライブラリから選択</p>
+                    <p className="text-xs text-slate-500 mt-1">保存済みの画像を選択</p>
+                  </div>
                 </button>
               </div>
             )}
