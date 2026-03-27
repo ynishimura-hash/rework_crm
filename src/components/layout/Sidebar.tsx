@@ -15,6 +15,7 @@ import {
     Link as LinkIcon,
     CreditCard,
     ClipboardList,
+    Camera,
     LogOut
 } from "lucide-react"
 
@@ -23,6 +24,7 @@ import { createClient } from "@/lib/supabase/client"
 
 const navigation = [
     { name: 'ダッシュボード', href: '/', icon: LayoutDashboard },
+    { name: '名刺スキャン', href: '/scan', icon: Camera },
     { name: '企業・顧客', href: '/companies', icon: Building2 },
     { name: '担当者リスト', href: '/contacts', icon: Users },
     { name: '商談・案件', href: '/deals', icon: Briefcase },

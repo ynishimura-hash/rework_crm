@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Camera, FileText, Upload, ArrowLeft, Users, Building2, Check, Loader2, X, ClipboardPaste, Edit3, FolderOpen, Image as ImageIcon, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 type InputMode = "camera" | "text" | "drive" | null;
 
@@ -35,6 +35,7 @@ interface ExtractedData {
 }
 
 export default function ScanPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<InputMode>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null); // 1枚の写真
   const [textInput, setTextInput] = useState("");
@@ -207,7 +208,18 @@ export default function ScanPage() {
   // 登録結果（companyId, contactId）を保持
   const [savedResults, setSavedResults] = useState<Record<number, { companyId?: string; contactId?: string; companyAction?: string; contactAction?: string }>>({});
 
-  const handleSave = async (index: number) => {
+  // 重複解決用state
+  interface DuplicateInfo {
+    index: number;
+    existingContact: Record<string, any>;
+    newContact: Record<string, any>;
+    diffs: Array<{ field: string; label: string; existing: string | null; new: string | null }>;
+    companyResult: { id: string | null; action: string };
+  }
+  const [duplicateInfo, setDuplicateInfo] = useState<DuplicateInfo | null>(null);
+  const [duplicateSelections, setDuplicateSelections] = useState<Record<string, "existing" | "new">>({});
+
+  const handleSave = async (index: number, options?: { forceNew?: boolean; resolvedDuplicate?: any }) => {
     const data = extractedResults[index];
     if (!data) return;
 
@@ -216,11 +228,29 @@ export default function ScanPage() {
       const res = await fetch("/api/scan/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, ...options }),
       });
 
       if (!res.ok) throw new Error("登録に失敗しました");
       const result = await res.json();
+
+      // 重複検出 → 差分UIを表示
+      if (result.duplicate) {
+        setSaveStatuses(prev => ({ ...prev, [index]: "idle" }));
+        // デフォルトは新しいスキャン結果を選択
+        const defaultSelections: Record<string, "existing" | "new"> = {};
+        result.diffs.forEach((d: any) => { defaultSelections[d.field] = "new"; });
+        setDuplicateSelections(defaultSelections);
+        setDuplicateInfo({
+          index,
+          existingContact: result.existingContact,
+          newContact: result.newContact,
+          diffs: result.diffs,
+          companyResult: result.company,
+        });
+        return;
+      }
+
       setSaveStatuses(prev => ({ ...prev, [index]: "saved" }));
       setSavedResults(prev => ({
         ...prev,
@@ -235,6 +265,36 @@ export default function ScanPage() {
       console.error("Save error:", err);
       setSaveStatuses(prev => ({ ...prev, [index]: "error" }));
     }
+  };
+
+  // 重複解決: ユーザーが選択した値で更新
+  const handleResolveDuplicate = async () => {
+    if (!duplicateInfo) return;
+    const { index, existingContact, newContact, diffs } = duplicateInfo;
+
+    // ユーザーの選択に基づいてフィールド値を構築
+    const fields: Record<string, string | null> = {};
+    for (const diff of diffs) {
+      const chosen = duplicateSelections[diff.field] || "new";
+      fields[diff.field] = chosen === "existing" ? diff.existing : diff.new;
+    }
+    // nameフィールドも更新
+    const lastName = fields.last_name ?? existingContact.last_name;
+    const firstName = fields.first_name ?? existingContact.first_name;
+    fields.name = `${lastName || ''} ${firstName || ''}`.trim();
+
+    setDuplicateInfo(null);
+    await handleSave(index, {
+      resolvedDuplicate: { contactId: existingContact.id, fields },
+    });
+  };
+
+  // 重複解決: 別人として新規登録
+  const handleForceNew = async () => {
+    if (!duplicateInfo) return;
+    const { index } = duplicateInfo;
+    setDuplicateInfo(null);
+    await handleSave(index, { forceNew: true });
   };
 
   const handleSaveAll = async () => {
@@ -276,27 +336,27 @@ export default function ScanPage() {
   // 結果表示画面
   if (extractedResults.length > 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
-        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-amber-200 px-4 py-3 flex items-center justify-between">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => { setExtractedResults([]); setEditingIndex(null); }} className="p-2 -ml-2 rounded-full hover:bg-amber-100 transition-colors">
-              <ArrowLeft className="w-5 h-5 text-amber-700" />
+            <button onClick={() => { setExtractedResults([]); setEditingIndex(null); }} className="p-2 -ml-2 rounded-full hover:bg-slate-100 transition-colors">
+              <ArrowLeft className="w-5 h-5 text-slate-600" />
             </button>
-            <h1 className="text-lg font-bold text-amber-900">
+            <h1 className="text-2xl font-bold text-slate-900">
               抽出結果 ({extractedResults.length}件)
             </h1>
           </div>
           {!allSaved && extractedResults.length > 1 && (
             <button
               onClick={handleSaveAll}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+              className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
             >
               全て登録
             </button>
           )}
-        </header>
+        </div>
 
-        <div className="p-4 space-y-4 max-w-lg mx-auto">
+        <div className="space-y-4 max-w-2xl">
           {extractedResults.map((data, index) => (
             <ResultCard
               key={index}
@@ -311,6 +371,83 @@ export default function ScanPage() {
             />
           ))}
 
+          {/* 重複解決モーダル */}
+          {duplicateInfo && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden max-h-[85vh] flex flex-col">
+                <div className="p-4 border-b border-amber-200 bg-amber-50">
+                  <h3 className="text-base font-bold text-amber-900 flex items-center gap-2">
+                    ⚠️ 同じメールアドレスの担当者が見つかりました
+                  </h3>
+                  <p className="text-xs text-amber-700 mt-1">
+                    {duplicateInfo.existingContact.email}
+                  </p>
+                </div>
+                <div className="p-4 overflow-y-auto flex-1 space-y-3">
+                  {duplicateInfo.diffs.length === 0 ? (
+                    <p className="text-sm text-slate-600 text-center py-4">差分はありません。全ての項目が一致しています。</p>
+                  ) : (
+                    duplicateInfo.diffs.map((diff) => (
+                      <div key={diff.field} className="border border-slate-200 rounded-xl overflow-hidden">
+                        <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200">
+                          <span className="text-xs font-semibold text-slate-600">{diff.label}</span>
+                        </div>
+                        <div className="divide-y divide-slate-100">
+                          <label className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${duplicateSelections[diff.field] === "existing" ? "bg-blue-50" : "hover:bg-slate-50"}`}>
+                            <input
+                              type="radio"
+                              name={`dup-${diff.field}`}
+                              checked={duplicateSelections[diff.field] === "existing"}
+                              onChange={() => setDuplicateSelections(prev => ({ ...prev, [diff.field]: "existing" }))}
+                              className="w-4 h-4 text-blue-600"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-xs text-slate-400">既存データ</span>
+                              <p className="text-sm text-slate-900 truncate">{diff.existing || <span className="text-slate-300">（なし）</span>}</p>
+                            </div>
+                          </label>
+                          <label className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${duplicateSelections[diff.field] === "new" ? "bg-amber-50" : "hover:bg-slate-50"}`}>
+                            <input
+                              type="radio"
+                              name={`dup-${diff.field}`}
+                              checked={duplicateSelections[diff.field] === "new"}
+                              onChange={() => setDuplicateSelections(prev => ({ ...prev, [diff.field]: "new" }))}
+                              className="w-4 h-4 text-amber-600"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-xs text-amber-600 font-medium">スキャン結果</span>
+                              <p className="text-sm text-slate-900 truncate">{diff.new || <span className="text-slate-300">（なし）</span>}</p>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-2">
+                  <button
+                    onClick={handleResolveDuplicate}
+                    className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    選択した内容で更新
+                  </button>
+                  <button
+                    onClick={handleForceNew}
+                    className="w-full py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50 transition-colors"
+                  >
+                    別人として新規登録
+                  </button>
+                  <button
+                    onClick={() => setDuplicateInfo(null)}
+                    className="w-full py-2 text-slate-400 text-xs hover:text-slate-600 transition-colors"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {allSaved && (
             <div className="flex flex-col items-center gap-3 py-6">
               <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
@@ -320,7 +457,7 @@ export default function ScanPage() {
                 {extractedResults.length}件の顧客情報を登録しました
               </p>
               <div className="flex flex-col gap-2 w-full max-w-xs">
-                <button onClick={reset} className="w-full py-2.5 bg-amber-600 text-white rounded-xl font-medium hover:bg-amber-700 transition-colors">
+                <button onClick={reset} className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors">
                   続けてスキャン
                 </button>
                 <Link href="/contacts" className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium text-center hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
@@ -337,70 +474,67 @@ export default function ScanPage() {
 
   // メイン画面
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-amber-200 px-4 py-3 flex items-center gap-3">
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
         {mode ? (
-          <button onClick={() => { setMode(null); setImagePreview(null); setTextInput(""); }} className="p-2 -ml-2 rounded-full hover:bg-amber-100 transition-colors">
-            <ArrowLeft className="w-5 h-5 text-amber-700" />
+          <button onClick={() => { setMode(null); setImagePreview(null); setTextInput(""); }} className="p-2 -ml-2 rounded-full hover:bg-slate-100 transition-colors">
+            <ArrowLeft className="w-5 h-5 text-slate-600" />
           </button>
         ) : (
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-            <Camera className="w-5 h-5 text-white" />
-          </div>
+          <button onClick={() => router.back()} className="p-2 -ml-2 rounded-full hover:bg-slate-100 transition-colors">
+            <ArrowLeft className="w-5 h-5 text-slate-600" />
+          </button>
         )}
-        <h1 className="text-lg font-bold text-amber-900">
-          {mode === "camera" ? "名刺・スクショを読み取り" : mode === "text" ? "テキストから登録" : mode === "drive" ? "Google Drive から読み取り" : "顧客情報を登録"}
-        </h1>
-      </header>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <Camera className="w-6 h-6 text-blue-600" />
+            {mode === "camera" ? "名刺・スクショを読み取り" : mode === "text" ? "テキストから登録" : mode === "drive" ? "Google Drive から読み取り" : "名刺スキャン"}
+          </h1>
+          {!mode && <p className="text-sm text-slate-500 mt-1">名刺やテキスト情報からAIが自動で顧客情報を読み取ります</p>}
+        </div>
+      </div>
 
-      <div className="p-4 max-w-lg mx-auto">
+      <div className="max-w-2xl">
         {!mode && (
-          <div className="space-y-4 pt-8">
-            <p className="text-center text-amber-700 text-sm mb-6">
-              名刺やLINEのスクショ、テキスト情報から<br />AIが自動で顧客情報を読み取ります
-            </p>
-
+          <div className="space-y-4">
             <button
               onClick={() => setMode("camera")}
-              className="w-full bg-white rounded-2xl border-2 border-amber-200 p-6 flex items-center gap-4 hover:border-amber-400 hover:shadow-md transition-all active:scale-[0.98]"
+              className="w-full bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-4 hover:border-blue-300 hover:shadow-sm transition-all"
             >
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center shrink-0">
-                <Camera className="w-7 h-7 text-amber-600" />
+              <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                <Camera className="w-6 h-6 text-blue-600" />
               </div>
               <div className="text-left">
-                <h3 className="font-bold text-slate-900">写真・スクショから読み取り</h3>
+                <h3 className="font-semibold text-slate-900">写真・スクショから読み取り</h3>
                 <p className="text-sm text-slate-500 mt-0.5">1枚の写真に最大4枚の名刺を自動検出</p>
               </div>
             </button>
 
             <button
               onClick={() => setMode("text")}
-              className="w-full bg-white rounded-2xl border-2 border-blue-200 p-6 flex items-center gap-4 hover:border-blue-400 hover:shadow-md transition-all active:scale-[0.98]"
+              className="w-full bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-4 hover:border-blue-300 hover:shadow-sm transition-all"
             >
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center shrink-0">
-                <FileText className="w-7 h-7 text-blue-600" />
+              <div className="w-12 h-12 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                <FileText className="w-6 h-6 text-indigo-600" />
               </div>
               <div className="text-left">
-                <h3 className="font-bold text-slate-900">テキストをコピペ</h3>
+                <h3 className="font-semibold text-slate-900">テキストをコピペ</h3>
                 <p className="text-sm text-slate-500 mt-0.5">自己紹介文、メール署名、LINE文章</p>
               </div>
             </button>
 
-            {/* Google Drive一括インポート */}
-            <div className="pt-4 border-t border-amber-200">
-              <button
-                onClick={() => { setMode("drive"); loadDriveFiles(); }}
-                className="w-full bg-white rounded-2xl border-2 border-emerald-200 p-6 flex items-center gap-4 hover:border-emerald-400 hover:shadow-md transition-all active:scale-[0.98]"
-              >
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-100 to-green-100 flex items-center justify-center shrink-0">
-                  <FolderOpen className="w-7 h-7 text-emerald-600" />
-                </div>
-                <div className="text-left">
-                  <h3 className="font-bold text-slate-900">Google Drive から一括インポート</h3>
-                  <p className="text-sm text-slate-500 mt-0.5">Driveの名刺画像をまとめて読み取り</p>
-                </div>
-              </button>
-            </div>
+            <button
+              onClick={() => { setMode("drive"); loadDriveFiles(); }}
+              className="w-full bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-4 hover:border-blue-300 hover:shadow-sm transition-all"
+            >
+              <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                <FolderOpen className="w-6 h-6 text-emerald-600" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold text-slate-900">Google Drive から一括インポート</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Driveの名刺画像をまとめて読み取り</p>
+              </div>
+            </button>
           </div>
         )}
 

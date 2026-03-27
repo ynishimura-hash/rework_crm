@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { checkDuplicates } from '@/lib/gemini';
 
 interface RegisterBody {
   company?: {
@@ -18,6 +17,12 @@ interface RegisterBody {
     email?: string;
     phone?: string;
   };
+  // 重複解決済みの場合に指定
+  resolvedDuplicate?: {
+    contactId: string; // 既存contactのID
+    fields: Record<string, string | null>; // ユーザーが選択した最終値
+  };
+  forceNew?: boolean; // 同一メールでも新規作成（別人）
 }
 
 export async function POST(request: NextRequest) {
@@ -25,44 +30,25 @@ export async function POST(request: NextRequest) {
     const body: RegisterBody = await request.json();
     const supabase = createAdminClient();
 
-    // Fetch existing companies and contacts for dedup check
-    const [companiesRes, contactsRes] = await Promise.all([
-      supabase.from('companies').select('id, name'),
-      supabase.from('contacts').select('id, name, email, companies(name)'),
-    ]);
-
-    const existingCompanies = (companiesRes.data || []).map((c: any) => ({
-      id: c.id,
-      name: c.name,
-    }));
-
-    const existingContacts = (contactsRes.data || []).map((c: any) => ({
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      company_name: c.companies?.name,
-    }));
-
-    // AI deduplication check
-    const { companyMatch, contactMatch } = await checkDuplicates(
-      body,
-      existingCompanies,
-      existingContacts
-    );
-
     let companyId: string | null = null;
-    let contactId: string | null = null;
     let companyAction: 'created' | 'matched' | 'skipped' = 'skipped';
-    let contactAction: 'created' | 'matched' | 'skipped' = 'skipped';
 
-    // Handle company
+    // === 企業の処理 ===
     if (body.company?.name) {
-      if (companyMatch && companyMatch.confidence >= 80) {
-        // High confidence match - use existing
-        companyId = companyMatch.id;
+      // 会社名の正規化比較で既存チェック
+      const { data: existingCompanies } = await supabase
+        .from('companies')
+        .select('id, name');
+
+      const normalized = normalizeCompanyName(body.company.name);
+      const match = (existingCompanies || []).find(
+        (c: any) => normalizeCompanyName(c.name) === normalized
+      );
+
+      if (match) {
+        companyId = match.id;
         companyAction = 'matched';
       } else {
-        // Create new company
         const { data: newCompany, error } = await supabase
           .from('companies')
           .insert({
@@ -79,7 +65,6 @@ export async function POST(request: NextRequest) {
         companyId = newCompany.id;
         companyAction = 'created';
 
-        // Log activity
         await supabase.from('activity_logs').insert({
           action_type: 'company_created',
           description: `名刺スキャンから企業「${body.company.name}」を登録`,
@@ -89,36 +74,96 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Handle contact
+    // === 担当者の処理 ===
+    let contactId: string | null = null;
+    let contactAction: 'created' | 'matched' | 'updated' | 'skipped' = 'skipped';
+
     if (body.contact?.last_name || body.contact?.first_name) {
       const contactName = `${body.contact?.last_name || ''} ${body.contact?.first_name || ''}`.trim();
 
-      if (contactMatch && contactMatch.confidence >= 80) {
-        // High confidence match - use existing
-        contactId = contactMatch.id;
-        contactAction = 'matched';
+      // ケース1: 重複解決済み（ユーザーが差分UIで選択した結果）
+      if (body.resolvedDuplicate) {
+        contactId = body.resolvedDuplicate.contactId;
+        const updates = { ...body.resolvedDuplicate.fields, updated_at: new Date().toISOString() };
+        if (companyId) (updates as any).company_id = companyId;
 
-        // 既存担当者の情報を最新のスキャン結果で更新
-        const contactName = `${body.contact?.last_name || ''} ${body.contact?.first_name || ''}`.trim();
-        const updates: Record<string, string | null> = {};
-        if (contactName) updates.name = contactName;
-        if (body.contact?.last_name) updates.last_name = body.contact.last_name;
-        if (body.contact?.first_name) updates.first_name = body.contact.first_name;
-        if (body.contact?.furigana) updates.furigana = body.contact.furigana;
-        if (body.contact?.department) updates.department = body.contact.department;
-        if (body.contact?.position) updates.position = body.contact.position;
-        if (body.contact?.phone) updates.phone = body.contact.phone;
-        if (body.contact?.email) updates.email = body.contact.email;
-        if (companyId) updates.company_id = companyId;
+        await supabase
+          .from('contacts')
+          .update(updates)
+          .eq('id', contactId);
 
-        if (Object.keys(updates).length > 0) {
-          await supabase
+        contactAction = 'updated';
+      }
+      // ケース2: 新規作成を強制（同一メールだが別人）
+      else if (body.forceNew) {
+        const { data: newContact, error } = await supabase
+          .from('contacts')
+          .insert({
+            name: contactName,
+            last_name: body.contact?.last_name || null,
+            first_name: body.contact?.first_name || null,
+            furigana: body.contact?.furigana || null,
+            department: body.contact?.department || null,
+            position: body.contact?.position || null,
+            email: body.contact?.email || null,
+            phone: body.contact?.phone || null,
+            company_id: companyId,
+            priority: '中',
+          })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+        contactId = newContact.id;
+        contactAction = 'created';
+      }
+      // ケース3: 通常の登録（メールで重複チェック）
+      else {
+        // メールアドレスで重複チェック
+        if (body.contact?.email) {
+          const { data: existingContact } = await supabase
             .from('contacts')
-            .update({ ...updates, updated_at: new Date().toISOString() })
-            .eq('id', contactId);
+            .select('id, name, last_name, first_name, furigana, department, position, email, phone, company_id, companies:company_id(id, name)')
+            .eq('email', body.contact.email)
+            .maybeSingle();
+
+          if (existingContact) {
+            // 重複あり → 差分データを返してフロントに選択させる
+            const diffs = buildDiffs(existingContact, body.contact);
+
+            return NextResponse.json({
+              success: false,
+              duplicate: true,
+              existingContact: {
+                id: existingContact.id,
+                name: existingContact.name,
+                last_name: existingContact.last_name,
+                first_name: existingContact.first_name,
+                furigana: existingContact.furigana,
+                department: existingContact.department,
+                position: existingContact.position,
+                email: existingContact.email,
+                phone: existingContact.phone,
+                company_name: (existingContact as any).companies?.name,
+              },
+              newContact: {
+                name: contactName,
+                last_name: body.contact?.last_name || null,
+                first_name: body.contact?.first_name || null,
+                furigana: body.contact?.furigana || null,
+                department: body.contact?.department || null,
+                position: body.contact?.position || null,
+                email: body.contact?.email || null,
+                phone: body.contact?.phone || null,
+                company_name: body.company?.name || null,
+              },
+              diffs,
+              company: { id: companyId, action: companyAction },
+            });
+          }
         }
-      } else {
-        // Create new contact
+
+        // 重複なし → 新規作成
         const { data: newContact, error } = await supabase
           .from('contacts')
           .insert({
@@ -144,18 +189,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      company: {
-        id: companyId,
-        action: companyAction,
-        matchedName: companyMatch?.name,
-        confidence: companyMatch?.confidence,
-      },
-      contact: {
-        id: contactId,
-        action: contactAction,
-        matchedName: contactMatch?.name,
-        confidence: contactMatch?.confidence,
-      },
+      company: { id: companyId, action: companyAction },
+      contact: { id: contactId, action: contactAction },
     });
   } catch (error) {
     console.error('Scan register error:', error);
@@ -164,4 +199,35 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// 差分のある項目を抽出
+function buildDiffs(existing: any, newData: any): Array<{ field: string; label: string; existing: string | null; new: string | null }> {
+  const fieldMap: Array<{ key: string; label: string; existingKey?: string }> = [
+    { key: 'last_name', label: '姓' },
+    { key: 'first_name', label: '名' },
+    { key: 'furigana', label: 'ふりがな' },
+    { key: 'department', label: '部署' },
+    { key: 'position', label: '役職' },
+    { key: 'phone', label: '電話' },
+  ];
+
+  return fieldMap
+    .map(({ key, label }) => ({
+      field: key,
+      label,
+      existing: existing[key] || null,
+      new: newData[key] || null,
+    }))
+    .filter(d => d.existing !== d.new && (d.existing || d.new));
+}
+
+function normalizeCompanyName(name: string): string {
+  return name
+    .replace(/[\s　]+/g, '')
+    .replace(/\(株\)|（株）/g, '株式会社')
+    .replace(/\(有\)|（有）/g, '有限会社')
+    .replace(/\(合\)|（合）/g, '合同会社')
+    .replace(/\(社\)|（社）/g, '一般社団法人')
+    .toLowerCase();
 }
