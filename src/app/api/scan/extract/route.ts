@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { extractFromImage, extractFromImages, extractFromText, extractMultipleFromImage, enrichFromWebsite, searchCompanyHP } from '@/lib/gemini';
 
+// Next.js App Router: ボディサイズ上限を10MBに引き上げ（base64画像対応）
+export const maxDuration = 60; // タイムアウトも60秒に
+export const dynamic = 'force-dynamic';
+
 // HP情報の自動補完（既存URLからの補完 + 会社名からの検索）
 async function enrichResult(data: any): Promise<any> {
   // 1) hp_urlがある場合は既存の enrichFromWebsite で補完

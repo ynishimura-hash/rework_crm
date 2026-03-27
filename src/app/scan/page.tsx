@@ -123,15 +123,51 @@ export default function ScanPage() {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 画像をリサイズ・圧縮してbase64に変換（Vercelの4.5MBリクエスト制限対策）
+  const compressImage = (file: File, maxWidth = 1600, quality = 0.8): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+
+        // 最大幅に合わせてリサイズ（名刺読み取りには1600pxで十分）
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Canvas not supported")); return; }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL("image/jpeg", quality);
+        resolve(compressed);
+      };
+      img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || !files[0]) return;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setImagePreview(ev.target?.result as string);
-    };
-    reader.readAsDataURL(files[0]);
+    try {
+      // 画像を圧縮してからプレビュー表示
+      const compressed = await compressImage(files[0]);
+      setImagePreview(compressed);
+    } catch (err) {
+      console.error("Image compression error:", err);
+      // フォールバック: 圧縮失敗時は元画像を使用
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setImagePreview(ev.target?.result as string);
+      };
+      reader.readAsDataURL(files[0]);
+    }
 
     // input をリセットして同じファイルを再選択可能にする
     e.target.value = '';
