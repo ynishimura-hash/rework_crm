@@ -415,57 +415,124 @@ ${existingContacts.map((c, i) => `${i + 1}. [ID:${c.id}] ${c.name} (${c.company_
  * 企業HPから不足情報を自動補完
  * hp_urlが存在し、industry/addressが不足している場合にWebサイトを解析
  */
+/**
+ * 企業HPから詳細情報を取得
+ * 業種・住所に加えて、代表者・設立年・従業員数・資本金・事業内容・電話番号も取得
+ */
+export interface CompanyEnrichResult {
+  industry?: string | null;
+  address?: string | null;
+  representative?: string | null;
+  established_year?: string | null;
+  employee_count?: string | null;
+  capital?: string | null;
+  business_description?: string | null;
+  phone?: string | null;
+}
+
 export async function enrichFromWebsite(data: ExtractedInfo): Promise<ExtractedInfo> {
   const url = data.company?.hp_url;
   if (!url || !GEMINI_API_KEY) return data;
 
-  // 補完が必要な項目があるかチェック
-  const needsIndustry = !data.company?.industry;
-  const needsAddress = !data.company?.address;
-  if (!needsIndustry && !needsAddress) return data;
+  try {
+    const enrichResult = await fetchAndAnalyzeHP(url, data.company?.name || '不明');
+    if (!enrichResult) return data;
+
+    // 既存データがない項目のみ補完
+    const updatedCompany = { ...data.company };
+    if (!updatedCompany.industry && enrichResult.industry) updatedCompany.industry = enrichResult.industry;
+    if (!updatedCompany.address && enrichResult.address) updatedCompany.address = enrichResult.address;
+
+    return { ...data, company: updatedCompany };
+  } catch (error) {
+    console.error('HP enrichment failed:', error);
+    return data;
+  }
+}
+
+/**
+ * HPのURLから企業情報を包括的に取得
+ * enrich APIから直接呼ばれる
+ */
+export async function fetchAndAnalyzeHP(url: string, companyName: string): Promise<CompanyEnrichResult | null> {
+  if (!GEMINI_API_KEY) return null;
 
   try {
-    // WebサイトのHTMLを取得（タイムアウト5秒）
+    // WebサイトのHTMLを取得（タイムアウト8秒）
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    // まずトップページを取得
     const res = await fetch(url, {
       signal: controller.signal,
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ReworkCRM/1.0)' },
     });
     clearTimeout(timeout);
+    if (!res.ok) return null;
 
-    if (!res.ok) return data;
+    let htmlTexts: string[] = [];
+    const topHtml = await res.text();
+    htmlTexts.push(extractText(topHtml, 4000));
 
-    const html = await res.text();
-    // HTMLからテキストのみ抽出（タグ除去、最大3000文字に制限）
-    const textContent = html
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 3000);
+    // 会社概要ページも探して取得（/company, /about, /corporate など）
+    const aboutPaths = ['/company', '/about', '/corporate', '/company/', '/about/', '/corporate/', '/about-us', '/profile'];
+    const baseUrl = new URL(url).origin;
 
-    if (textContent.length < 50) return data;
+    // 会社概要ページへのリンクをHTMLから探す
+    const aboutLinkMatch = topHtml.match(/href=["']([^"']*(?:company|about|corporate|gaiyou|profile)[^"']*)["']/i);
+    if (aboutLinkMatch) {
+      const aboutUrl = aboutLinkMatch[1].startsWith('http') ? aboutLinkMatch[1] : `${baseUrl}${aboutLinkMatch[1]}`;
+      if (!aboutPaths.includes(aboutUrl)) aboutPaths.unshift(new URL(aboutUrl).pathname);
+    }
 
-    const missingFields: string[] = [];
-    if (needsIndustry) missingFields.push('industry（業種）');
-    if (needsAddress) missingFields.push('address（住所・所在地）');
+    // 1つだけ会社概要ページを取得（最初に成功したもの）
+    for (const path of aboutPaths.slice(0, 3)) {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 5000);
+        const aboutRes = await fetch(`${baseUrl}${path}`, {
+          signal: ctrl.signal,
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ReworkCRM/1.0)' },
+        });
+        clearTimeout(t);
+        if (aboutRes.ok) {
+          const aboutHtml = await aboutRes.text();
+          htmlTexts.push(extractText(aboutHtml, 4000));
+          break;
+        }
+      } catch {}
+    }
 
-    const prompt = `以下は「${data.company?.name || '不明'}」という企業のWebサイトのテキストです。
-以下の不足情報を抽出してJSON形式で返してください。
+    const combinedText = htmlTexts.join('\n\n---\n\n');
+    if (combinedText.length < 50) return null;
 
-### 抽出したい情報:
-${missingFields.map(f => `- ${f}`).join('\n')}
+    const prompt = `あなたは企業調査の専門家です。以下は「${companyName}」という企業のWebサイトのテキストです。
+企業情報を可能な限り詳細に抽出してJSON形式で返してください。
+
+### 抽出項目:
+- industry: 業種（例: IT・ソフトウェア、製造業、保険業、建設業 など）
+- address: 本社所在地（郵便番号含む、できるだけ詳細に）
+- representative: 代表者名（代表取締役、CEO、社長など）
+- established_year: 設立年（例: "1902年" "2015年4月"）
+- employee_count: 従業員数（例: "約5,000名" "50名（2024年4月現在）"）
+- capital: 資本金（例: "1億円" "3,000万円"）
+- business_description: 事業内容の要約（100文字以内で簡潔に。主要な事業・サービスを列挙）
+- phone: 代表電話番号（ハイフン区切り）
 
 ### Webサイトテキスト:
-${textContent}
+${combinedText}
 
-### 出力JSON形式（見つからない場合はnull）:
+### 出力JSON形式（見つからない項目はnullにしてください）:
 \`\`\`json
 {
-  ${needsIndustry ? '"industry": "業種",' : ''}
-  ${needsAddress ? '"address": "住所",' : ''}
+  "industry": "業種",
+  "address": "住所",
+  "representative": "代表者名",
+  "established_year": "設立年",
+  "employee_count": "従業員数",
+  "capital": "資本金",
+  "business_description": "事業内容の要約",
+  "phone": "代表電話番号"
 }
 \`\`\`
 余分な説明は不要です。JSONのみ返してください。`;
@@ -477,32 +544,35 @@ ${textContent}
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.1,
-          maxOutputTokens: 256,
+          maxOutputTokens: 512,
           responseMimeType: 'application/json',
         },
       }),
     });
 
-    if (!response.ok) return data;
+    if (!response.ok) return null;
 
     const result = await response.json();
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return data;
+    if (!text) return null;
 
     const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || [null, text];
-    const enriched = JSON.parse(jsonMatch[1] || text);
-
-    // 不足フィールドのみ補完（既存データは上書きしない）
-    const updatedCompany = { ...data.company };
-    if (needsIndustry && enriched.industry) updatedCompany.industry = enriched.industry;
-    if (needsAddress && enriched.address) updatedCompany.address = enriched.address;
-
-    return { ...data, company: updatedCompany };
+    return JSON.parse(jsonMatch[1] || text) as CompanyEnrichResult;
   } catch (error) {
-    // リサーチ失敗は無視（元データをそのまま返す）
-    console.error('HP enrichment failed:', error);
-    return data;
+    console.error('HP analysis failed:', error);
+    return null;
   }
+}
+
+// HTMLからテキストのみ抽出
+function extractText(html: string, maxLength: number): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
 }
 
 function simpleDuplicateCheck(

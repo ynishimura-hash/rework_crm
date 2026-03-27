@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { searchCompanyHP, enrichFromWebsite } from '@/lib/gemini';
+import { searchCompanyHP, fetchAndAnalyzeHP } from '@/lib/gemini';
 
 // HP情報の非同期取得API
 // 登録後にフロントからfire-and-forgetで呼ばれる
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     // 企業情報を取得
     const { data: company, error } = await supabase
       .from('companies')
-      .select('id, name, hp_url, industry, address')
+      .select('id, name, hp_url, industry, address, representative, established_year, employee_count, capital, business_description, phone')
       .eq('id', companyId)
       .single();
 
@@ -27,61 +27,55 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '企業が見つかりません' }, { status: 404 });
     }
 
-    const companyData: any = {
-      company: {
-        name: company.name,
-        hp_url: company.hp_url,
-        industry: company.industry,
-        address: company.address,
-      }
-    };
+    let hpUrl = company.hp_url;
+    const enrichedFields: string[] = [];
+    const updates: Record<string, string | null> = {};
 
-    let enriched: any = companyData;
-    let enrichedFields: string[] = [];
-
-    // 1) hp_urlがある場合はWebサイトから補完
-    if (company.hp_url) {
-      enriched = await enrichFromWebsite(companyData);
-    }
-    // 2) hp_urlがない場合はGeminiで検索
-    else if (company.name) {
+    // Step 1: hp_urlがない場合はGeminiで検索
+    if (!hpUrl && company.name) {
       const hpInfo = await searchCompanyHP(company.name);
-      const updatedCompany = { ...companyData.company };
-
       if (hpInfo.hp_url) {
-        updatedCompany.hp_url = hpInfo.hp_url;
+        hpUrl = hpInfo.hp_url;
+        updates.hp_url = hpUrl;
         enrichedFields.push('WebサイトURL');
       }
-      if (hpInfo.industry && !updatedCompany.industry) {
-        updatedCompany.industry = hpInfo.industry;
+      // Gemini知識ベースから取得できた基本情報も保存
+      if (hpInfo.industry && !company.industry) {
+        updates.industry = hpInfo.industry;
         enrichedFields.push('業種');
       }
-      if (hpInfo.address && !updatedCompany.address) {
-        updatedCompany.address = hpInfo.address;
+      if (hpInfo.address && !company.address) {
+        updates.address = hpInfo.address;
         enrichedFields.push('住所');
       }
+    }
 
-      enriched = { company: updatedCompany };
+    // Step 2: HPがあれば詳細情報を取得
+    if (hpUrl) {
+      const hpData = await fetchAndAnalyzeHP(hpUrl, company.name);
 
-      // hp_urlが見つかったらさらにWebサイトから詳細を補完
-      if (hpInfo.hp_url) {
-        enriched = await enrichFromWebsite(enriched);
+      if (hpData) {
+        // 既存データがない項目のみ補完
+        const fieldMap: Array<{ key: string; label: string }> = [
+          { key: 'industry', label: '業種' },
+          { key: 'address', label: '住所' },
+          { key: 'representative', label: '代表者' },
+          { key: 'established_year', label: '設立年' },
+          { key: 'employee_count', label: '従業員数' },
+          { key: 'capital', label: '資本金' },
+          { key: 'business_description', label: '事業内容' },
+          { key: 'phone', label: '代表電話番号' },
+        ];
+
+        for (const { key, label } of fieldMap) {
+          const newVal = (hpData as any)[key];
+          const existingVal = (company as any)[key];
+          if (newVal && !existingVal && !updates[key]) {
+            updates[key] = newVal;
+            if (!enrichedFields.includes(label)) enrichedFields.push(label);
+          }
+        }
       }
-    }
-
-    // 補完された項目を特定
-    const updates: Record<string, string | null> = {};
-    if (enriched.company.hp_url && enriched.company.hp_url !== company.hp_url) {
-      updates.hp_url = enriched.company.hp_url;
-      if (!enrichedFields.includes('WebサイトURL')) enrichedFields.push('WebサイトURL');
-    }
-    if (enriched.company.industry && enriched.company.industry !== company.industry) {
-      updates.industry = enriched.company.industry;
-      if (!enrichedFields.includes('業種')) enrichedFields.push('業種');
-    }
-    if (enriched.company.address && enriched.company.address !== company.address) {
-      updates.address = enriched.company.address;
-      if (!enrichedFields.includes('住所')) enrichedFields.push('住所');
     }
 
     // DBを更新
@@ -105,13 +99,12 @@ export async function POST(request: NextRequest) {
       type: hasUpdates ? 'success' : 'info',
       link: `/companies/${companyId}`,
       related_company_id: companyId,
-      metadata: { source: 'scan_enrich', enriched_fields: enrichedFields, updates },
+      metadata: { source: 'scan_enrich', enriched_fields: enrichedFields },
     });
 
     return NextResponse.json({
       success: true,
       enrichedFields,
-      updates,
     });
   } catch (error) {
     console.error('Enrich error:', error);

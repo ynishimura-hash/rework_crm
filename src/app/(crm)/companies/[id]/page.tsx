@@ -286,6 +286,55 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                 <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-blue-50 rounded-full blur-3xl opacity-60 pointer-events-none"></div>
             </div>
 
+            {/* HP取得企業情報 */}
+            {!isEditing && (companyInfo.representative || companyInfo.established_year || companyInfo.employee_count || companyInfo.capital || companyInfo.business_description || companyInfo.phone) && (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="p-4 md:p-5 border-b border-slate-100 flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-blue-600" />
+                        <h2 className="text-sm font-bold text-slate-900">HP取得 企業情報</h2>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">自動取得</span>
+                    </div>
+                    <div className="p-4 md:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {companyInfo.representative && (
+                            <div>
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">代表者</p>
+                                <p className="text-sm text-slate-900 font-medium">{companyInfo.representative}</p>
+                            </div>
+                        )}
+                        {companyInfo.established_year && (
+                            <div>
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">設立</p>
+                                <p className="text-sm text-slate-900 font-medium">{companyInfo.established_year}</p>
+                            </div>
+                        )}
+                        {companyInfo.employee_count && (
+                            <div>
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">従業員数</p>
+                                <p className="text-sm text-slate-900 font-medium">{companyInfo.employee_count}</p>
+                            </div>
+                        )}
+                        {companyInfo.capital && (
+                            <div>
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">資本金</p>
+                                <p className="text-sm text-slate-900 font-medium">{companyInfo.capital}</p>
+                            </div>
+                        )}
+                        {companyInfo.phone && (
+                            <div>
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">代表電話</p>
+                                <p className="text-sm text-slate-900 font-medium">{companyInfo.phone}</p>
+                            </div>
+                        )}
+                        {companyInfo.business_description && (
+                            <div className="sm:col-span-2 lg:col-span-3">
+                                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">事業内容</p>
+                                <p className="text-sm text-slate-700 leading-relaxed">{companyInfo.business_description}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* メイングリッドエリア */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
