@@ -356,7 +356,7 @@ export default function ScanPage() {
           )}
         </div>
 
-        <div className="space-y-4 max-w-2xl">
+        <div className="space-y-4 max-w-2xl mx-auto">
           {extractedResults.map((data, index) => (
             <ResultCard
               key={index}
@@ -494,7 +494,7 @@ export default function ScanPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl">
+      <div className="max-w-2xl mx-auto">
         {!mode && (
           <div className="space-y-4">
             <button
