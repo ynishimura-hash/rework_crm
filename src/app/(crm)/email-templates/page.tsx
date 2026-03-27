@@ -22,7 +22,7 @@ const TYPE_COLORS: Record<EmailTemplateType, string> = {
 const SAMPLE_VARS: Record<string, string> = {
   guestName: '山田太郎',
   guestEmail: 'yamada@example.com',
-  hostName: 'EIS西村友祐',
+  hostName: 'Rework担当者',
   eventTypeName: '30分ミーティング',
   date: '2026年3月17日(火)',
   time: '11:00',

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Camera, FileText, Upload, ArrowLeft, Users, Building2, Check, Loader2, X, ClipboardPaste, Plus, Trash2, Edit3, FolderOpen, Image as ImageIcon, RefreshCw } from "lucide-react";
+import { Camera, FileText, Upload, ArrowLeft, Users, Building2, Check, Loader2, X, ClipboardPaste, Edit3, FolderOpen, Image as ImageIcon, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -34,11 +34,9 @@ interface ExtractedData {
   };
 }
 
-const MAX_IMAGES = 4;
-
 export default function ScanPage() {
   const [mode, setMode] = useState<InputMode>(null);
-  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [imagePreview, setImagePreview] = useState<string | null>(null); // 1枚の写真
   const [textInput, setTextInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedResults, setExtractedResults] = useState<ExtractedData[]>([]);
@@ -127,55 +125,31 @@ export default function ScanPage() {
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || !files[0]) return;
 
-    const remaining = MAX_IMAGES - imagePreviews.length;
-    const filesToRead = Array.from(files).slice(0, remaining);
-
-    filesToRead.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setImagePreviews(prev => {
-          if (prev.length >= MAX_IMAGES) return prev;
-          return [...prev, ev.target?.result as string];
-        });
-      };
-      reader.readAsDataURL(file);
-    });
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImagePreview(ev.target?.result as string);
+    };
+    reader.readAsDataURL(files[0]);
 
     // input をリセットして同じファイルを再選択可能にする
     e.target.value = '';
   };
 
-  const removeImage = (index: number) => {
-    setImagePreviews(prev => prev.filter((_, i) => i !== index));
-  };
-
   const handleExtract = async () => {
     setIsProcessing(true);
     try {
-      if (mode === "camera" && imagePreviews.length > 0) {
-        if (imagePreviews.length === 1) {
-          // 単一画像
-          const res = await fetch("/api/scan/extract", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: imagePreviews[0] }),
-          });
-          if (!res.ok) throw new Error("抽出に失敗しました");
-          const data = await res.json();
-          setExtractedResults([data]);
-        } else {
-          // 複数画像
-          const res = await fetch("/api/scan/extract", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ images: imagePreviews }),
-          });
-          if (!res.ok) throw new Error("抽出に失敗しました");
-          const data = await res.json();
-          setExtractedResults(data.results || []);
-        }
+      if (mode === "camera" && imagePreview) {
+        // 1枚の写真から複数名刺を検出
+        const res = await fetch("/api/scan/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: imagePreview, detectMultiple: true }),
+        });
+        if (!res.ok) throw new Error("抽出に失敗しました");
+        const data = await res.json();
+        setExtractedResults(data.results || [data]);
       } else if (mode === "text" && textInput.trim()) {
         const res = await fetch("/api/scan/extract", {
           method: "POST",
@@ -194,6 +168,9 @@ export default function ScanPage() {
     }
   };
 
+  // 登録結果（companyId, contactId）を保持
+  const [savedResults, setSavedResults] = useState<Record<number, { companyId?: string; contactId?: string; companyAction?: string; contactAction?: string }>>({});
+
   const handleSave = async (index: number) => {
     const data = extractedResults[index];
     if (!data) return;
@@ -207,7 +184,17 @@ export default function ScanPage() {
       });
 
       if (!res.ok) throw new Error("登録に失敗しました");
+      const result = await res.json();
       setSaveStatuses(prev => ({ ...prev, [index]: "saved" }));
+      setSavedResults(prev => ({
+        ...prev,
+        [index]: {
+          companyId: result.company?.id,
+          contactId: result.contact?.id,
+          companyAction: result.company?.action,
+          contactAction: result.contact?.action,
+        },
+      }));
     } catch (err) {
       console.error("Save error:", err);
       setSaveStatuses(prev => ({ ...prev, [index]: "error" }));
@@ -238,10 +225,11 @@ export default function ScanPage() {
 
   const reset = () => {
     setMode(null);
-    setImagePreviews([]);
+    setImagePreview(null);
     setTextInput("");
     setExtractedResults([]);
     setSaveStatuses({});
+    setSavedResults({});
     setEditingIndex(null);
     setIsProcessing(false);
     setSelectedDriveFiles(new Set());
@@ -280,6 +268,7 @@ export default function ScanPage() {
               data={data}
               isEditing={editingIndex === index}
               saveStatus={saveStatuses[index] || "idle"}
+              savedResult={savedResults[index]}
               onEdit={() => setEditingIndex(editingIndex === index ? null : index)}
               onSave={() => handleSave(index)}
               onUpdateField={(section, field, value) => updateField(index, section, field, value)}
@@ -294,9 +283,15 @@ export default function ScanPage() {
               <p className="text-green-700 font-semibold">
                 {extractedResults.length}件の顧客情報を登録しました
               </p>
-              <button onClick={reset} className="px-6 py-2.5 bg-amber-600 text-white rounded-xl font-medium hover:bg-amber-700 transition-colors">
-                続けてスキャン
-              </button>
+              <div className="flex flex-col gap-2 w-full max-w-xs">
+                <button onClick={reset} className="w-full py-2.5 bg-amber-600 text-white rounded-xl font-medium hover:bg-amber-700 transition-colors">
+                  続けてスキャン
+                </button>
+                <Link href="/contacts" className="w-full py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium text-center hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
+                  <Users className="w-4 h-4" />
+                  顧客一覧を見る
+                </Link>
+              </div>
             </div>
           )}
         </div>
@@ -309,7 +304,7 @@ export default function ScanPage() {
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-amber-200 px-4 py-3 flex items-center gap-3">
         {mode ? (
-          <button onClick={() => { setMode(null); setImagePreviews([]); setTextInput(""); }} className="p-2 -ml-2 rounded-full hover:bg-amber-100 transition-colors">
+          <button onClick={() => { setMode(null); setImagePreview(null); setTextInput(""); }} className="p-2 -ml-2 rounded-full hover:bg-amber-100 transition-colors">
             <ArrowLeft className="w-5 h-5 text-amber-700" />
           </button>
         ) : (
@@ -338,7 +333,7 @@ export default function ScanPage() {
               </div>
               <div className="text-left">
                 <h3 className="font-bold text-slate-900">写真・スクショから読み取り</h3>
-                <p className="text-sm text-slate-500 mt-0.5">名刺1〜4枚まで一括読み取り対応</p>
+                <p className="text-sm text-slate-500 mt-0.5">1枚の写真に最大4枚の名刺を自動検出</p>
               </div>
             </button>
 
@@ -379,49 +374,27 @@ export default function ScanPage() {
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              multiple
               onChange={handleImageUpload}
               className="hidden"
             />
 
-            {/* 画像プレビューグリッド */}
-            {imagePreviews.length > 0 && (
-              <div className="grid grid-cols-2 gap-3">
-                {imagePreviews.map((preview, index) => (
-                  <div key={index} className="relative rounded-xl overflow-hidden border border-amber-200 aspect-[3/4]">
-                    <img src={preview} alt={`名刺 ${index + 1}`} className="w-full h-full object-cover" />
-                    <button
-                      onClick={() => removeImage(index)}
-                      className="absolute top-1.5 right-1.5 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white hover:bg-black/70 transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                    <div className="absolute bottom-1.5 left-1.5 px-2 py-0.5 bg-black/50 rounded-full text-white text-xs">
-                      {index + 1}/{imagePreviews.length}
-                    </div>
-                  </div>
-                ))}
-
-                {/* 追加ボタン */}
-                {imagePreviews.length < MAX_IMAGES && (
+            {/* 撮影済み画像プレビュー */}
+            {imagePreview ? (
+              <div className="space-y-3">
+                <div className="relative rounded-2xl overflow-hidden border-2 border-amber-200">
+                  <img src={imagePreview} alt="撮影した名刺" className="w-full object-contain max-h-[50vh]" />
                   <button
-                    onClick={() => {
-                      if (fileInputRef.current) {
-                        fileInputRef.current.removeAttribute('capture');
-                        fileInputRef.current.click();
-                      }
-                    }}
-                    className="rounded-xl border-2 border-dashed border-amber-300 aspect-[3/4] flex flex-col items-center justify-center gap-2 hover:border-amber-500 hover:bg-amber-50/50 transition-all"
+                    onClick={() => setImagePreview(null)}
+                    className="absolute top-2 right-2 w-8 h-8 bg-black/50 rounded-full flex items-center justify-center text-white hover:bg-black/70 transition-colors"
                   >
-                    <Plus className="w-8 h-8 text-amber-400" />
-                    <span className="text-xs text-amber-600">追加 (残り{MAX_IMAGES - imagePreviews.length}枚)</span>
+                    <X className="w-4 h-4" />
                   </button>
-                )}
+                </div>
+                <p className="text-xs text-center text-amber-600">
+                  1枚の写真に最大4枚の名刺を並べて撮影できます。AIが自動で検出します。
+                </p>
               </div>
-            )}
-
-            {/* 画像がない場合の初期画面 */}
-            {imagePreviews.length === 0 && (
+            ) : (
               <div className="space-y-3">
                 <button
                   onClick={() => {
@@ -437,7 +410,7 @@ export default function ScanPage() {
                   </div>
                   <div className="text-center">
                     <p className="font-semibold text-amber-800">タップして撮影</p>
-                    <p className="text-xs text-amber-600 mt-1">名刺やスクショを撮影（最大{MAX_IMAGES}枚）</p>
+                    <p className="text-xs text-amber-600 mt-1">名刺を1〜4枚並べて1枚の写真に収めてください</p>
                   </div>
                 </button>
 
@@ -451,13 +424,13 @@ export default function ScanPage() {
                   className="w-full py-3.5 bg-white rounded-xl border border-amber-200 text-amber-700 font-medium flex items-center justify-center gap-2 hover:bg-amber-50 transition-colors active:scale-[0.98]"
                 >
                   <Upload className="w-4 h-4" />
-                  ライブラリから選択（複数可）
+                  ライブラリから選択
                 </button>
               </div>
             )}
 
             {/* 読み取りボタン */}
-            {imagePreviews.length > 0 && (
+            {imagePreview && (
               <button
                 onClick={handleExtract}
                 disabled={isProcessing}
@@ -466,12 +439,12 @@ export default function ScanPage() {
                 {isProcessing ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    AIが読み取り＆HP情報補完中... ({imagePreviews.length}枚)
+                    AIが名刺を検出＆HP情報検索中...
                   </>
                 ) : (
                   <>
                     <Camera className="w-5 h-5" />
-                    AIで読み取る ({imagePreviews.length}枚)
+                    AIで名刺を読み取る
                   </>
                 )}
               </button>
@@ -636,6 +609,7 @@ function ResultCard({
   data,
   isEditing,
   saveStatus,
+  savedResult,
   onEdit,
   onSave,
   onUpdateField,
@@ -644,21 +618,52 @@ function ResultCard({
   data: ExtractedData;
   isEditing: boolean;
   saveStatus: "idle" | "saving" | "saved" | "error";
+  savedResult?: { companyId?: string; contactId?: string; companyAction?: string; contactAction?: string };
   onEdit: () => void;
   onSave: () => void;
   onUpdateField: (section: "company" | "contact", field: string, value: string) => void;
 }) {
   if (saveStatus === "saved") {
     return (
-      <div className="bg-green-50 rounded-2xl border border-green-200 p-4 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-          <Check className="w-5 h-5 text-green-600" />
+      <div className="bg-green-50 rounded-2xl border border-green-200 overflow-hidden">
+        <div className="p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+            <Check className="w-5 h-5 text-green-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-green-800 truncate">
+              {data.company?.name || "企業名なし"} — {data.contact?.last_name || ""}{data.contact?.first_name || ""}
+            </p>
+            <p className="text-xs text-green-600">
+              {savedResult?.companyAction === "created" ? "企業を新規登録" : savedResult?.companyAction === "matched" ? "既存企業と一致" : ""}
+              {savedResult?.companyAction && savedResult?.contactAction ? " / " : ""}
+              {savedResult?.contactAction === "created" ? "担当者を新規登録" : savedResult?.contactAction === "matched" ? "既存担当者と一致" : ""}
+            </p>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-semibold text-green-800">
-            {data.company?.name || "企業名なし"} — {data.contact?.last_name || ""}{data.contact?.first_name || ""}
-          </p>
-          <p className="text-xs text-green-600">登録完了</p>
+        {/* 詳細リンク */}
+        <div className="flex border-t border-green-200">
+          {savedResult?.contactId && (
+            <Link
+              href={`/contacts/${savedResult.contactId}`}
+              className="flex-1 py-2.5 text-center text-xs font-medium text-green-700 hover:bg-green-100 transition-colors flex items-center justify-center gap-1"
+            >
+              <Users className="w-3.5 h-3.5" />
+              担当者を見る
+            </Link>
+          )}
+          {savedResult?.companyId && savedResult?.contactId && (
+            <div className="w-px bg-green-200" />
+          )}
+          {savedResult?.companyId && (
+            <Link
+              href={`/companies/${savedResult.companyId}`}
+              className="flex-1 py-2.5 text-center text-xs font-medium text-green-700 hover:bg-green-100 transition-colors flex items-center justify-center gap-1"
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              企業を見る
+            </Link>
+          )}
         </div>
       </div>
     );

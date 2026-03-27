@@ -91,7 +91,7 @@ export async function getAccessToken(): Promise<string> {
             grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
             client_id: clientId,
             client_secret: clientSecret,
-            scope: "bot",
+            scope: "bot user.read bot.message bot.read",
         }).toString(),
     })
 

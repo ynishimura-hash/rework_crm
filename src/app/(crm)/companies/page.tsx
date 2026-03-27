@@ -11,10 +11,14 @@ import {
     Filter,
     FileSpreadsheet,
     Camera,
-    MoreVertical,
     LayoutGrid,
-    List
+    List,
+    Eye,
+    Trash2
 } from "lucide-react"
+import ContextMenu from "@/components/ui/ContextMenu"
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog"
+import { deleteCompany } from "@/app/actions/companies"
 
 export default function CompaniesPage() {
     const router = useRouter()
@@ -24,6 +28,14 @@ export default function CompaniesPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState("")
     const [viewMode, setViewMode] = useState<'table' | 'card'>('table')
+    const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
+
+    const handleDelete = async () => {
+        if (!deleteTarget) return
+        await deleteCompany(deleteTarget.id)
+        setAllCompanies(prev => prev.filter(c => c.id !== deleteTarget.id))
+        setDeleteTarget(null)
+    }
 
     useEffect(() => {
         getCompanies().then(data => {
@@ -197,9 +209,10 @@ export default function CompaniesPage() {
                                                 )}
                                             </td>
                                             <td className="px-3 md:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 transition-colors">
-                                                    <MoreVertical className="w-5 h-5" />
-                                                </button>
+                                                <ContextMenu items={[
+                                                    { label: "詳細を見る", icon: <Eye className="w-4 h-4" />, onClick: () => router.push(`/companies/${company.id}`) },
+                                                    { label: "削除", icon: <Trash2 className="w-4 h-4" />, variant: "danger", onClick: () => setDeleteTarget({ id: company.id, name: company.name }) },
+                                                ]} />
                                             </td>
                                         </tr>
                                     )
@@ -239,6 +252,10 @@ export default function CompaniesPage() {
                                             <h3 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 truncate">{company.name}</h3>
                                             <p className="text-xs text-slate-500">{company.industry || '業種未設定'}</p>
                                         </div>
+                                        <ContextMenu items={[
+                                            { label: "詳細を見る", icon: <Eye className="w-4 h-4" />, onClick: () => router.push(`/companies/${company.id}`) },
+                                            { label: "削除", icon: <Trash2 className="w-4 h-4" />, variant: "danger", onClick: () => setDeleteTarget({ id: company.id, name: company.name }) },
+                                        ]} />
                                     </div>
                                     {contact && (
                                         <p className="text-xs text-slate-600 mb-2 truncate">担当: {contact.name}</p>
@@ -272,6 +289,16 @@ export default function CompaniesPage() {
                 </div>
             )}
 
+            {/* 削除確認ダイアログ */}
+            {deleteTarget && (
+                <DeleteConfirmDialog
+                    title="企業を削除"
+                    message={`「${deleteTarget.name}」を削除しますか？関連する担当者・商談も影響を受ける可能性があります。`}
+                    onConfirm={handleDelete}
+                    onCancel={() => setDeleteTarget(null)}
+                />
+            )}
+
             {/* 一括アップロードモーダル */}
             {isUploadModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -281,7 +308,7 @@ export default function CompaniesPage() {
                             <button onClick={() => setIsUploadModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
                         </div>
                         <div className="p-6 space-y-6">
-                            <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50/50 hover:bg-blue-50/50 hover:border-blue-200 transition-all cursor-pointer group">
+                            <div onClick={() => router.push('/scan')} className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50/50 hover:bg-blue-50/50 hover:border-blue-200 transition-all cursor-pointer group">
                                 <div className="flex flex-col items-center justify-center text-center space-y-3">
                                     <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <Camera className="w-6 h-6 text-blue-600" />

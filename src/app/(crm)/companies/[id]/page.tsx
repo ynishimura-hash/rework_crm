@@ -20,8 +20,11 @@ import {
     ExternalLink,
     ChevronRight,
     UserCircle,
-    Save
+    Save,
+    Trash2
 } from "lucide-react"
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog"
+import { deleteCompany } from "@/app/actions/companies"
 
 export default function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter()
@@ -35,6 +38,12 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
 
     const [activeTab, setActiveTab] = useState('pipeline')
     const [isEditing, setIsEditing] = useState(false)
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+
+    const handleDeleteCompany = async () => {
+        await deleteCompany(companyId)
+        router.push('/companies')
+    }
     const [editForm, setEditForm] = useState({
         name: '',
         industry: '',
@@ -246,7 +255,7 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                                 </div>
                                 <div className="mt-4 bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-700 leading-relaxed max-w-4xl">
                                     <div className="font-semibold text-slate-900 mb-1 text-xs uppercase tracking-wider">AI 生成概要</div>
-                                    当社のサービスであるEhime Baseや動画制作などに興味を持っている可能性がある企業。システムや採用に関するソリューションを検討中のステータスです。
+                                    AI定額制研修やDX定額制研修などに興味を持っている可能性がある企業。研修・人材育成に関するソリューションを検討中のステータスです。
                                 </div>
                             </>
                         )}
@@ -263,6 +272,13 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                                 className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
                             >
                                 企業情報編集
+                            </button>
+                            <button
+                                onClick={() => setShowDeleteDialog(true)}
+                                className="px-5 py-2.5 bg-white border border-rose-200 text-rose-600 rounded-lg text-sm font-medium hover:bg-rose-50 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                削除
                             </button>
                         </div>
                     )}
@@ -399,34 +415,19 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
                         </div>
                     </div>
 
-                    {/* 外部サービス連携 (Ehime Base等) */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-zinc-50/80">
-                            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                                <Globe className="w-4 h-4 text-emerald-600" />
-                                連携サービス
-                            </h2>
-                        </div>
-                        <div className="p-5 space-y-3">
-                            <div className="p-4 border border-slate-200 rounded-xl hover:shadow-md transition-shadow bg-gradient-to-br from-white to-slate-50 cursor-pointer group">
-                                <div className="flex items-center justify-between mb-1">
-                                    <h3 className="text-sm font-bold text-slate-900">Ehime Base</h3>
-                                    <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                        ACTIVE
-                                    </span>
-                                </div>
-                                <p className="text-xs text-slate-500 mb-3">受講生管理・学習進捗</p>
-                                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                                    <span className="text-xs font-medium text-slate-600">管理画面を開く</span>
-                                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
                 </div>
             </div>
+
+            {/* 削除確認ダイアログ */}
+            {showDeleteDialog && (
+                <DeleteConfirmDialog
+                    title="企業を削除"
+                    message={`「${companyInfo?.name}」を削除しますか？関連する担当者・商談も影響を受ける可能性があります。`}
+                    onConfirm={handleDeleteCompany}
+                    onCancel={() => setShowDeleteDialog(false)}
+                />
+            )}
         </div>
     )
 }

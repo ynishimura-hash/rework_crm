@@ -1,5 +1,6 @@
-const CACHE_NAME = 'eis-crm-v1';
+const CACHE_NAME = 'rework-scan-v1';
 const PRECACHE_URLS = [
+  '/scan',
   '/contacts',
   '/companies',
 ];

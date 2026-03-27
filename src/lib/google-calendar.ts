@@ -16,17 +16,18 @@ async function getValidClient(accessToken: string, refreshToken: string, userId?
     refresh_token: refreshToken,
   });
 
-  // Listen for token refresh events
+  // Listen for token refresh events（共有カレンダートークンを更新）
   oauth2Client.on('tokens', async (tokens) => {
-    if (userId && tokens.access_token) {
+    if (tokens.access_token) {
       const supabase = createServiceRoleClient();
       await supabase
-        .from('scheduling_users')
+        .from('google_calendar_tokens')
         .update({
-          google_access_token: tokens.access_token,
+          access_token: tokens.access_token,
+          token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', userId);
+        .eq('user_email', 'shared');
     }
   });
 

@@ -4,7 +4,10 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { getDeals, createDeal } from "@/app/actions/deals"
 import CreateDealModal from "@/components/deals/CreateDealModal"
-import { Briefcase, Search, Plus, Filter, Download, MoreVertical, Calendar, LayoutGrid, List, RefreshCw } from "lucide-react"
+import { Briefcase, Search, Plus, Filter, Download, Calendar, LayoutGrid, List, RefreshCw, Eye, Trash2 } from "lucide-react"
+import ContextMenu from "@/components/ui/ContextMenu"
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog"
+import { deleteDeal } from "@/app/actions/deals"
 
 export default function DealsPage() {
     const router = useRouter()
@@ -16,6 +19,14 @@ export default function DealsPage() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [searchQuery, setSearchQuery] = useState("")
     const [viewMode, setViewMode] = useState<'table' | 'card'>('table')
+    const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
+
+    const handleDeleteDeal = async () => {
+        if (!deleteTarget) return
+        await deleteDeal(deleteTarget.id)
+        setAllDeals(prev => prev.filter(d => d.id !== deleteTarget.id))
+        setDeleteTarget(null)
+    }
 
     useEffect(() => {
         getDeals().then(data => {
@@ -219,9 +230,10 @@ export default function DealsPage() {
                                             </div>
                                         </td>
                                         <td className="px-3 md:px-6 py-4 whitespace-nowrap text-right">
-                                            <button className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 transition-colors">
-                                                <MoreVertical className="w-5 h-5" />
-                                            </button>
+                                            <ContextMenu items={[
+                                                { label: "詳細を見る", icon: <Eye className="w-4 h-4" />, onClick: () => router.push(`/deals/${deal.id}`) },
+                                                { label: "削除", icon: <Trash2 className="w-4 h-4" />, variant: "danger", onClick: () => setDeleteTarget({ id: deal.id, title: deal.title }) },
+                                            ]} />
                                         </td>
                                     </tr>
                                 ))}
@@ -255,6 +267,10 @@ export default function DealsPage() {
                                         <h3 className="text-sm font-bold text-slate-900 line-clamp-2">{deal.title}</h3>
                                         <p className="text-xs text-slate-500 mt-1">{deal.companies?.name || '不明'}</p>
                                     </div>
+                                    <ContextMenu items={[
+                                        { label: "詳細を見る", icon: <Eye className="w-4 h-4" />, onClick: () => router.push(`/deals/${deal.id}`) },
+                                        { label: "削除", icon: <Trash2 className="w-4 h-4" />, variant: "danger", onClick: () => setDeleteTarget({ id: deal.id, title: deal.title }) },
+                                    ]} />
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
@@ -296,6 +312,16 @@ export default function DealsPage() {
             )}
 
             <CreateDealModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleCreateDeal} />
+
+            {/* 削除確認ダイアログ */}
+            {deleteTarget && (
+                <DeleteConfirmDialog
+                    title="商談を削除"
+                    message={`「${deleteTarget.title}」を削除しますか？関連する議事録・入金記録も削除されます。`}
+                    onConfirm={handleDeleteDeal}
+                    onCancel={() => setDeleteTarget(null)}
+                />
+            )}
         </div>
     )
 }

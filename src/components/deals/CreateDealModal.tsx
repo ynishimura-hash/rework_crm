@@ -80,7 +80,7 @@ export default function CreateDealModal({ isOpen, onClose, onSubmit }: CreateDea
                                     id="companyName"
                                     name="companyName"
                                     required
-                                    placeholder="例：合同会社EIS"
+                                    placeholder="例：株式会社○○"
                                     className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400"
                                 />
                             </div>

@@ -1,17 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
+import ScanBottomNav from "@/components/scan/ScanBottomNav";
 
-// 名刺スキャン専用レイアウト（独立PWA）
-// CRMのサイドバーなし、スキャン専用のフルスクリーンUI
+// 名刺スキャンPWA — スキャンがトップの独立アプリ
 export const metadata: Metadata = {
   title: "名刺スキャン",
   description: "名刺・テキストから顧客情報を自動登録",
-  manifest: "/manifest-scan.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "名刺スキャン",
-  },
 };
 
 export const viewport: Viewport = {
@@ -27,5 +21,12 @@ export default function ScanLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <Suspense>{children}</Suspense>;
+  return (
+    <Suspense>
+      <div className="pb-16">
+        {children}
+      </div>
+      <ScanBottomNav />
+    </Suspense>
+  );
 }

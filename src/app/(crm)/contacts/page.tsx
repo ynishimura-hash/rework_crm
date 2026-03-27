@@ -3,7 +3,10 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { getContacts } from "@/app/actions/contacts"
-import { Users, Search, Plus, Filter, Download, MoreVertical, Mail, Phone, LayoutGrid, List } from "lucide-react"
+import { Users, Search, Plus, Filter, Download, Mail, Phone, LayoutGrid, List, Eye, Trash2 } from "lucide-react"
+import ContextMenu from "@/components/ui/ContextMenu"
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog"
+import { deleteContact } from "@/app/actions/contacts"
 
 export default function ContactsPage() {
     const router = useRouter()
@@ -12,6 +15,14 @@ export default function ContactsPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState("")
     const [viewMode, setViewMode] = useState<'table' | 'card'>('table')
+    const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; companyId?: string } | null>(null)
+
+    const handleDelete = async () => {
+        if (!deleteTarget) return
+        await deleteContact(deleteTarget.id, deleteTarget.companyId)
+        setAllContacts(prev => prev.filter(c => c.id !== deleteTarget.id))
+        setDeleteTarget(null)
+    }
 
     useEffect(() => {
         getContacts().then(data => {
@@ -139,9 +150,10 @@ export default function ContactsPage() {
                                             </span>
                                         </td>
                                         <td className="px-3 md:px-6 py-4 whitespace-nowrap text-right">
-                                            <button className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 transition-colors">
-                                                <MoreVertical className="w-5 h-5" />
-                                            </button>
+                                            <ContextMenu items={[
+                                                { label: "詳細を見る", icon: <Eye className="w-4 h-4" />, onClick: () => router.push(`/contacts/${contact.id}`) },
+                                                { label: "削除", icon: <Trash2 className="w-4 h-4" />, variant: "danger", onClick: () => setDeleteTarget({ id: contact.id, name: contact.name, companyId: contact.company_id }) },
+                                            ]} />
                                         </td>
                                     </tr>
                                 ))}
@@ -182,6 +194,10 @@ export default function ContactsPage() {
                                     }`}>
                                         {contact.priority || '中'}
                                     </span>
+                                    <ContextMenu items={[
+                                        { label: "詳細を見る", icon: <Eye className="w-4 h-4" />, onClick: () => router.push(`/contacts/${contact.id}`) },
+                                        { label: "削除", icon: <Trash2 className="w-4 h-4" />, variant: "danger", onClick: () => setDeleteTarget({ id: contact.id, name: contact.name, companyId: contact.company_id }) },
+                                    ]} />
                                 </div>
                                 <div className="space-y-1 text-xs text-slate-600">
                                     {contact.email && (
@@ -210,6 +226,16 @@ export default function ContactsPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* 削除確認ダイアログ */}
+            {deleteTarget && (
+                <DeleteConfirmDialog
+                    title="担当者を削除"
+                    message={`「${deleteTarget.name}」を削除しますか？この操作は取り消せません。`}
+                    onConfirm={handleDelete}
+                    onCancel={() => setDeleteTarget(null)}
+                />
             )}
         </div>
     )

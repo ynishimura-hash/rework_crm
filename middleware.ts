@@ -9,6 +9,10 @@ const PUBLIC_ROUTES = [
   '/scan',
   '/api/line/webhook',
   '/api/scan',
+  '/api/gmail',
+  '/api/google-calendar',
+  '/api/lineworks',
+  '/api/freee',
 ]
 
 export async function middleware(request: NextRequest) {

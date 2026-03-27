@@ -43,14 +43,14 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "Failed to get token", details: tokenData }, { status: tokenResponse.status })
         }
 
-        // トークンをSupabaseに保存
+        // トークンをSupabaseに保存（共有カレンダーとして全CRMユーザーが参照）
         const supabase = createAdminClient()
         await supabase.from("google_calendar_tokens").upsert({
-            user_id: "default",
+            user_email: "shared",
             access_token: tokenData.access_token,
             refresh_token: tokenData.refresh_token || null,
-            expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
-        }, { onConflict: "user_id" })
+            token_expiry: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+        }, { onConflict: "user_email" })
 
         // Cookieにもアクセストークンを保存（短期間）
         const response = NextResponse.redirect(new URL("/calendar", request.url))

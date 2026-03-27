@@ -20,9 +20,12 @@ import {
     CreditCard,
     ClipboardList,
     Send,
-    ChevronDown
+    ChevronDown,
+    Trash2
 } from "lucide-react"
 import CreateFreeeInvoiceModal from "@/components/deals/CreateFreeeInvoiceModal"
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog"
+import { deleteDeal } from "@/app/actions/deals"
 
 // クライアントからログを記録するヘルパー
 async function postLog(action_type: string, description: string, opts?: { related_deal_id?: string, related_company_id?: string, metadata?: Record<string, any> }) {
@@ -82,6 +85,13 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
     const [isDocHistoryOpen, setIsDocHistoryOpen] = useState(false)
 
     const [isEditing, setIsEditing] = useState(false)
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+
+    const handleDeleteDeal = async () => {
+        await deleteDeal(dealId)
+        router.push('/deals')
+    }
+
     const [editForm, setEditForm] = useState({
         title: '',
         company_id: '',
@@ -870,6 +880,13 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
                             >
                                 商談情報を編集
                             </button>
+                            <button
+                                onClick={() => setShowDeleteDialog(true)}
+                                className="px-5 py-2.5 bg-white border border-rose-200 text-rose-600 rounded-lg text-sm font-medium hover:bg-rose-50 transition-colors flex items-center justify-center gap-2 mt-2"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                削除
+                            </button>
                         </div>
                     )}
                 </div>
@@ -1592,6 +1609,16 @@ export default function DealDetailPage({ params }: { params: Promise<{ id: strin
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* 削除確認ダイアログ */}
+            {showDeleteDialog && (
+                <DeleteConfirmDialog
+                    title="商談を削除"
+                    message={`「${dealInfo?.title}」を削除しますか？関連する議事録・入金記録も削除されます。`}
+                    onConfirm={handleDeleteDeal}
+                    onCancel={() => setShowDeleteDialog(false)}
+                />
             )}
         </div>
     )

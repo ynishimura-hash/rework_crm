@@ -64,7 +64,7 @@ export default async function CRMLayout({
               </svg>
             </button>
             <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs ring-2 ring-white cursor-pointer hover:bg-blue-700 transition-colors">
-              EIS
+              R
             </div>
           </div>
         </header>

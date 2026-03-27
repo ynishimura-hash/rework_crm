@@ -52,34 +52,27 @@ export async function GET(request: Request) {
 
   const serviceClient = createServiceRoleClient();
 
-  // Parallel: fetch user tokens + availability rules + attendee tokens at the same time
+  // 共有Googleカレンダートークンを取得（s.sawadaさんのカレンダーを全員で共有）
   const attendeeIds = attendeeIdsParam ? attendeeIdsParam.split(',').filter(id => id && id !== targetUserId) : [];
 
-  const [userResult, rulesResult, attendeesResult] = await Promise.all([
-    // 1. User tokens + email in a single query
-    serviceClient
-      .from('scheduling_users')
-      .select('email, google_access_token, google_refresh_token')
-      .eq('id', targetUserId)
-      .single(),
-    // 2. Availability rules
-    serviceClient
-      .from('scheduling_availability_rules')
-      .select('*')
-      .eq('user_id', targetUserId),
-    // 3. Attendee tokens (batch query instead of N+1)
-    attendeeIds.length > 0
-      ? serviceClient
-          .from('scheduling_users')
-          .select('id, name, email, google_access_token, google_refresh_token')
-          .in('id', attendeeIds)
-      : Promise.resolve({ data: [] as { id: string; name: string; email: string; google_access_token: string; google_refresh_token: string }[] }),
-  ]);
+  const { data: sharedToken } = await serviceClient
+    .from('google_calendar_tokens')
+    .select('access_token, refresh_token, user_email')
+    .eq('user_email', 'shared')
+    .single();
 
-  const userData = userResult.data;
-  if (!userData?.google_access_token || !userData?.google_refresh_token) {
-    return NextResponse.json({ events: [], availabilityWindows: [] });
+  if (!sharedToken?.access_token || !sharedToken?.refresh_token) {
+    return NextResponse.json({ events: [], availabilityWindows: [], error: 'Google Calendar未接続。管理者がカレンダー認証を行ってください。' });
   }
+
+  const userData = {
+    email: sharedToken.user_email || '',
+    google_access_token: sharedToken.access_token,
+    google_refresh_token: sharedToken.refresh_token,
+  };
+
+  const rulesResult = { data: [] as { day_of_week: number; start_time: string; end_time: string }[] };
+  const attendeesResult = { data: [] as { id: string; name: string; email: string; google_access_token: string; google_refresh_token: string }[] };
 
   const userEmail = userData.email || '';
   const availabilityWindows = (rulesResult.data || []).map(r => ({
@@ -221,20 +214,21 @@ async function getUserTokens(supabase: Awaited<ReturnType<typeof createServerSup
     userEmail = user.email || '';
   }
 
+  // 共有カレンダートークンを使用（s.sawadaさんのカレンダー）
   const serviceClient = createServiceRoleClient();
-  const { data: userData } = await serviceClient
-    .from('scheduling_users')
-    .select('google_access_token, google_refresh_token')
-    .eq('id', userId)
+  const { data: sharedToken } = await serviceClient
+    .from('google_calendar_tokens')
+    .select('access_token, refresh_token')
+    .eq('user_email', 'shared')
     .single();
 
-  if (!userData?.google_access_token || !userData?.google_refresh_token) return null;
+  if (!sharedToken?.access_token || !sharedToken?.refresh_token) return null;
 
   return {
     userId,
     email: userEmail,
-    accessToken: userData.google_access_token,
-    refreshToken: userData.google_refresh_token,
+    accessToken: sharedToken.access_token,
+    refreshToken: sharedToken.refresh_token,
   };
 }
 

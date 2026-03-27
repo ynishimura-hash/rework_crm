@@ -13,8 +13,11 @@ import {
     Save,
     MessageSquare,
     Clock,
-    Plus
+    Plus,
+    Trash2
 } from "lucide-react"
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog"
+import { deleteContact } from "@/app/actions/contacts"
 
 export default function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter()
@@ -27,6 +30,12 @@ export default function ContactDetailPage({ params }: { params: Promise<{ id: st
     const [isLoading, setIsLoading] = useState(true)
 
     const [isEditing, setIsEditing] = useState(false)
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+
+    const handleDeleteContact = async () => {
+        await deleteContact(contactId, contactInfo?.company_id)
+        router.push('/contacts')
+    }
     const [editForm, setEditForm] = useState({
         name: '',
         last_name: '',
@@ -253,6 +262,13 @@ export default function ContactDetailPage({ params }: { params: Promise<{ id: st
                             >
                                 連絡先を編集
                             </button>
+                            <button
+                                onClick={() => setShowDeleteDialog(true)}
+                                className="px-5 py-2.5 bg-white border border-rose-200 text-rose-600 rounded-lg text-sm font-medium hover:bg-rose-50 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                削除
+                            </button>
                         </div>
                     )}
                 </div>
@@ -321,6 +337,16 @@ export default function ContactDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                 </div>
             </div>
+
+            {/* 削除確認ダイアログ */}
+            {showDeleteDialog && (
+                <DeleteConfirmDialog
+                    title="担当者を削除"
+                    message={`「${contactInfo?.name}」を削除しますか？この操作は取り消せません。`}
+                    onConfirm={handleDeleteContact}
+                    onCancel={() => setShowDeleteDialog(false)}
+                />
+            )}
         </div>
     )
 }

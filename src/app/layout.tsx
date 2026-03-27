@@ -8,13 +8,22 @@ const inter = Inter({ subsets: ["latin"] });
 // ルートレイアウト（共通のhtml/body構造のみ）
 // CRM用のサイドバー・ヘッダーは(crm)ルートグループのlayout.tsxで管理
 export const metadata: Metadata = {
-  title: "Rework CRM",
-  description: "Rework 顧客管理・CRMシステム",
+  title: {
+    default: "Rework CRM - 顧客管理システム",
+    template: "%s | Rework CRM",
+  },
+  description: "合同会社Reworkの顧客管理CRMシステム。企業・担当者・商談の管理、freee会計連携、カレンダー・メール統合。",
   manifest: "/manifest.json",
+  openGraph: {
+    title: "Rework CRM - 顧客管理システム",
+    description: "合同会社Reworkの顧客管理CRMシステム。企業・担当者・商談の管理、freee会計連携、カレンダー・メール統合。",
+    siteName: "Rework CRM",
+    type: "website",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "顧客管理",
+    title: "Rework CRM",
   },
 };
 
