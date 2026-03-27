@@ -98,8 +98,13 @@ export async function POST(request: NextRequest) {
         contactId = contactMatch.id;
         contactAction = 'matched';
 
-        // Update contact with any new info
+        // 既存担当者の情報を最新のスキャン結果で更新
+        const contactName = `${body.contact?.last_name || ''} ${body.contact?.first_name || ''}`.trim();
         const updates: Record<string, string | null> = {};
+        if (contactName) updates.name = contactName;
+        if (body.contact?.last_name) updates.last_name = body.contact.last_name;
+        if (body.contact?.first_name) updates.first_name = body.contact.first_name;
+        if (body.contact?.furigana) updates.furigana = body.contact.furigana;
         if (body.contact?.department) updates.department = body.contact.department;
         if (body.contact?.position) updates.position = body.contact.position;
         if (body.contact?.phone) updates.phone = body.contact.phone;
