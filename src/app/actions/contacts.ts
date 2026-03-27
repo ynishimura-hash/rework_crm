@@ -16,7 +16,7 @@ export async function getContacts() {
             *,
             companies:company_id (id, name)
         `)
-        .order('name', { ascending: true })
+        .order('created_at', { ascending: false })
 
     if (error) {
         console.error("Failed to fetch contacts:", error)

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { getContacts } from "@/app/actions/contacts"
-import { Users, Search, Plus, Filter, Download, Mail, Phone, LayoutGrid, List, Eye, Trash2 } from "lucide-react"
+import { Users, Search, Plus, Filter, Download, Mail, Phone, LayoutGrid, List, Eye, Trash2, Camera } from "lucide-react"
 import ContextMenu from "@/components/ui/ContextMenu"
 import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog"
 import { deleteContact } from "@/app/actions/contacts"
@@ -63,10 +63,16 @@ export default function ContactsPage() {
                         <p className="text-sm text-slate-500 mt-1">取引先企業の担当者{filteredContacts.length}名を管理します。</p>
                     </div>
                     {isLoading && <div className="text-sm text-blue-600 animate-pulse">データを読み込み中...</div>}
-                    <button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
-                        <Plus className="w-4 h-4" />
-                        新規担当者
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => router.push('/scan')} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
+                            <Camera className="w-4 h-4 text-amber-600" />
+                            名刺から登録
+                        </button>
+                        <button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
+                            <Plus className="w-4 h-4" />
+                            新規担当者
+                        </button>
+                    </div>
                 </div>
 
                 {/* フィルター & 検索バー */}
